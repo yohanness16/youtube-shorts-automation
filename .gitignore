@@ -1,0 +1,9 @@
+.env
+output/
+cache/
+completed/
+failed/
+logs/
+__pycache__/
+*.pyc
+.pytest_cache/
