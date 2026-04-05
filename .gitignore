@@ -7,3 +7,10 @@ logs/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# OAuth secrets (local only)
+client_secrets.json
+
+# Local media assets (large files)
+bgMusic/
+bg_Video/
