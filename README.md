@@ -1,6 +1,6 @@
 # YouTube Shorts Automation — Reddit Stories
 
-Fully autonomous Python pipeline that generates viral Reddit Stories Shorts with background gameplay, emotional voiceovers, dynamic subtitles, and background music.
+Fully autonomous Python pipeline that generates viral Reddit Stories Shorts with background gameplay, emotional voiceovers, dynamic subtitles, and background music — plus automated channel growth tools for search, subscribe, comment, and SEO.
 
 ## Channel Growth Plan: 0 → 1K Subs in 7 Days
 
@@ -22,15 +22,20 @@ Fully autonomous Python pipeline that generates viral Reddit Stories Shorts with
 | 6-7 | prorevenge | confessions | Strong finish |
 
 #### Growth Tactics Implemented
-1. **Sub-to-Sub Strategy** — Subscribe to 50 Reddit story channels daily in 15-minute bursts
-   - Channels with 100-5K subs (they sub back fastest)
-   - Like their 2 most recent videos
-   - Leave genuine comments (not "sub4sub")
-2. **Comment Engagement** — Auto-post engaging question on every Short
-   - Pin the comment to drive reply rate
-   - Reply to EVERY comment within 1 hour
-3. **Cross-Promotion** — Post Shorts to r/YouTube_STARTUP for feedback
-4. **Optimized Metadata** — Subreddit-specific tags + trending hashtags in description
+1. **Sub-to-Sub Strategy** — Subscribe to 10 Reddit story channels daily (YouTube API limit)
+   - Search by niche-specific queries (e.g. "Am I The Asshole reddit")
+   - Deduplication — never subscribe to the same channel twice
+   - Subscribe to small channels with 100-5K subs (they sub back fastest)
+2. **Comment Engagement** — Auto-post contextual comments on similar-niche Shorts
+   - Daily limit: 20 comments across subscribed channels
+   - Uses natural, non-spammy templates with subreddit references
+3. **Cross-Promotion** — Comment on other creators' videos linking to our content
+   - Up to 30 cross-promo comments per day
+   - Links back to our most relevant video for the niche
+4. **SEO Tag Optimization** — Bulk update all video tags for discoverability
+   - 15-21 niche-specific tags per video
+   - Auto-detected from video description (r/subreddit matching)
+   - Tags include: subreddit name, reddit keywords, voiceover, shorts, viral
 5. **Consistent Branding** — Same voice styles, subtitle format, music mood
 
 #### Realistic Projections
@@ -74,6 +79,12 @@ python generate_short.py  # upload happens if credentials configured
 | `subtitles.py` | SRT → ASS (centered, animated, 64px) |
 | `editor.py` | ffmpeg assembly (bg music at 20% volume) |
 | `youtube_uploader.py` | Upload with tags + engaging comment |
+| `channel_manager.py` | Channel scheduling + growth orchestration |
+| `cli.py` | Interactive CLI entry point (mode 6 = growth) |
+| `growth_promoter.py` | YouTube API — search, subscribe, comment |
+| `tag_and_comment.py` | SEO tag pools + cross-promotion comments |
+| `update_video_data.py` | Bulk video metadata/tag updater |
+| `get_youtube_token.py` | OAuth token generation helper |
 | `config.py` | Settings from `.env` |
 
 ## Configuration
@@ -92,4 +103,28 @@ YOUTUBE_PRIVACY_STATUS=public
 - **yt-dlp** (for download fallback)
 - **Edge TTS** (free voiceover, no API key)
 - OpenRouter API key (for LLM scripts)
-- YouTube OAuth credentials (for upload)
+- YouTube OAuth credentials (for upload and growth actions)
+
+## Channel Growth
+
+Automated growth runs from CLI mode 6:
+
+```bash
+python cli.py
+# Select mode 6
+```
+
+Or run directly:
+
+```bash
+python growth_promoter.py              # run growth for all niches
+python update_video_data.py            # update tags on all videos
+python get_youtube_token.py            # get new OAuth refresh token
+```
+
+Growth workflow per niche:
+1. **Search** — finds channels in your subreddit's niche via YouTube API
+2. **Subscribe** — subscribes to new channels (10/day limit)
+3. **Comment** — comments on recent Shorts from subscribed channels (20/day limit)
+4. **SEO** — updates video tags with subreddit-specific keywords
+5. **Cross-promo** — comments on other niches' videos linking to our content
