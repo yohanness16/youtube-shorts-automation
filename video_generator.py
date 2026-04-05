@@ -9,7 +9,7 @@ from pathlib import Path
 
 from config import Settings
 from script_generator import Script
-from utils import retry
+from utils import retry, run_ffmpeg
 
 logger = logging.getLogger("video_automation.video")
 
@@ -138,12 +138,17 @@ def generate_all_clips(
     settings: Settings,
     script: Script,
     output_dir: Path,
+    source_path=None,
+    clip_timestamps: list[tuple[float, float]] | None = None,
 ) -> tuple[list[Path], bool]:
     """Generate all video clips for the script.
 
+    When source_path and clip_timestamps are provided, clips are cut from
+    the source video at the given timestamps. Otherwise clips are generated
+    via the AI video provider.
+
     Returns (list of clip paths, all_succeeded).
     """
-    provider = create_provider(settings)
     clip_dir = output_dir / "clips"
     clip_dir.mkdir(parents=True, exist_ok=True)
 
@@ -152,7 +157,23 @@ def generate_all_clips(
 
     for i, seg in enumerate(script.segments):
         clip_path = clip_dir / f"clip_{i:03d}.mp4"
-        prompt = seg.visual_prompt or f"Cinematic historical scene, 9:16 vertical, dramatic lighting"
+
+        # Review mode: clip from source video at known timestamps
+        if source_path and clip_timestamps and i < len(clip_timestamps):
+            start, end = clip_timestamps[i]
+            logger.info(f"Cutting clip {i+1}/{len(script.segments)} [{start:.0f}s-{end:.0f}s] from source")
+            try:
+                _extract_source_clip(source_path, clip_path, start, end)
+            except Exception as e:
+                logger.error(f"Failed to extract source clip: {e}, using fallback")
+                prompt = seg.visual_prompt or "Cinematic scene, 9:16 vertical"
+                _generate_fallback_clip(prompt, clip_path, settings.clip_duration_seconds)
+            clips.append(clip_path)
+            continue
+
+        # Normal mode: generate via AI provider
+        provider = create_provider(settings)
+        prompt = seg.visual_prompt or "Cinematic historical scene, 9:16 vertical, dramatic lighting"
 
         logger.info(f"Generating clip {i+1}/{len(script.segments)}: {prompt[:60]}...")
 
@@ -168,6 +189,27 @@ def generate_all_clips(
         clips.append(clip_path)
 
     return clips, all_ok
+
+
+def _extract_source_clip(source_path: Path, output_path: Path, start: float, end: float):
+    """Cut a clip from the source video and scale/pad to 9:16 vertical Shorts format."""
+    duration = end - start
+    if duration <= 0:
+        duration = 5
+
+    run_ffmpeg([
+        "-ss", str(start),
+        "-i", str(source_path),
+        "-t", str(duration),
+        "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black",
+        "-c:v", "libx264",
+        "-crf", "18",
+        "-preset", "medium",
+        "-an",  # No audio — voiceover handles that
+        "-pix_fmt", "yuv420p",
+        "-y",
+        str(output_path),
+    ])
 
 
 def _generate_fallback_clip(prompt: str, output_path: Path, duration: int = 5):
