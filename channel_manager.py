@@ -134,7 +134,94 @@ def generate_growth_report():
             print(f"  - {v['title']} ({v.get('views', '?')} views, {v.get('subs_gained', '?')} subs)")
 
 
+def record_promotion_action(action_type: str, details: dict = None):
+    """Record a growth/promotion action for tracking."""
+    stats = _load_stats()
+    today = datetime.now().strftime("%Y-%m-%d")
+    key = f"promotions_{today}"
+    if key not in stats:
+        stats[key] = []
+    entry = {
+        "type": action_type,
+        "details": details or {},
+        "timestamp": datetime.now().isoformat(),
+    }
+    stats[key].append(entry)
+    _save_stats(stats)
+
+
+def run_growth_for_niche(subreddit: str):
+    """Run daily channel growth for a subreddit niche."""
+    from config import Settings
+    from growth_promoter import run_daily_growth
+
+    settings = Settings.from_env()
+    settings.ensure_directories()
+    result = run_daily_growth(settings, subreddit)
+    record_promotion_action("daily_growth", {
+        "subreddit": subreddit,
+        "subscribed": result["subscribed"],
+        "commented": result["commented"],
+        "errors": result["errors"],
+    })
+    return result
+
+
+def print_growth_summary():
+    """Print a quick summary of today's growth actions."""
+    stats = _load_stats()
+    today = datetime.now().strftime("%Y-%m-%d")
+    key = f"promotions_{today}"
+    actions = stats.get(key, [])
+
+    print(f"=== Growth Summary for {today} ===")
+    if not actions:
+        print("No growth actions today yet.")
+        return
+
+    subs = sum(
+        1 for a in actions
+        if a["type"] == "subscribe" or a["details"].get("subscribed", 0) > 0
+    )
+    comments = sum(
+        a["details"].get("commented", 0) for a in actions
+        if a["details"].get("commented")
+    )
+
+    print(f"Subscribes today: {sum(d.get('subscribed', 0) for d in [a['details'] for a in actions] if isinstance(d, dict))}")
+    print(f"Comments today: {comments}")
+    for a in actions:
+        print(f"  [{a['timestamp'][:19]}] {a['type']}: {a['details']}")
+
+
 if __name__ == "__main__":
-    generate_daily_schedule()
-    print()
-    generate_growth_report()
+    import sys
+
+    if len(sys.argv) > 1 and sys.argv[1] == "growth":
+        subreddit = sys.argv[2] if len(sys.argv) > 2 else None
+        if subreddit:
+            print(f"Running growth for r/{subreddit}...")
+            result = run_growth_for_niche(subreddit)
+            print(f"Result: {result}")
+        else:
+            from config import Settings
+            settings = Settings.from_env()
+            niches = settings.reddit.niches
+            if niches.lower() == "all":
+                from reddit_stories import ALL_NICHES
+                niches_list = ALL_NICHES[:3]
+            else:
+                niches_list = [n.strip() for n in niches.split(",")]
+
+            print(f"Running growth for {niches_list}")
+            for niche in niches_list:
+                result = run_growth_for_niche(niche)
+                print(f"r/{niche}: {result}")
+            print()
+            print_growth_summary()
+    else:
+        generate_daily_schedule()
+        print()
+        generate_growth_report()
+        print()
+        print_growth_summary()

@@ -272,6 +272,64 @@ def menu_queue_status():
     print()
 
 
+def menu_growth(settings):
+    """Channel growth strategy menu — subscribe to same-niche channels, leave comments."""
+    print("\n[MODE 6] Channel Growth")
+    print("-" * 40)
+    print("Automated channel growth strategy:")
+    print("  1. Search YouTube for channels in your niche")
+    print("  2. Subscribe to same-niche channels")
+    print("  3. Leave contextual engagement comments")
+    print("  4. Track progress in promotion log")
+
+    print("\nOptions:")
+    print("  1) Run growth for all configured niches")
+    print("  2) Run growth for a specific subreddit")
+    print("  3) View growth summary")
+
+    choice = input("\nSelect (1/2/3): ").strip()
+
+    if choice == "1":
+        from channel_manager import run_growth_for_niche
+        from reddit_stories import ALL_NICHES
+
+        niches_str = settings.reddit.niches
+        if niches_str.lower() == "all":
+            niches_list = ALL_NICHES[:3]
+        else:
+            niches_list = [n.strip() for n in niches_str.split(",") if n.strip()]
+
+        print(f"\nRunning growth for: {', '.join(niches_list)}")
+        for niche in niches_list:
+            print(f"\n--- r/{niche} ---")
+            result = run_growth_for_niche(niche)
+            print(f"  Subscribed: {result['subscribed']}, Comments: {result['commented']}, Errors: {result['errors']}")
+
+        print("\nDone! Growth actions complete.")
+
+    elif choice == "2":
+        print("\nAvailable niches (from reddit_stories.py):")
+        from reddit_stories import SUBREDDITS
+        for sub, vibe in SUBREDDITS.items():
+            print(f"  {sub:25s} — {vibe}")
+
+        subreddit = input("\nEnter subreddit: ").strip()
+        if not subreddit:
+            print("Cancelled.")
+            return
+
+        from channel_manager import run_growth_for_niche
+        print(f"\nRunning growth for r/{subreddit}...")
+        result = run_growth_for_niche(subreddit)
+        print(f"  Subscribed: {result['subscribed']}, Comments: {result['commented']}, Errors: {result['errors']}")
+
+    elif choice == "3":
+        from channel_manager import print_growth_summary
+        print_growth_summary()
+    else:
+        print("Invalid.")
+
+
 def main_cli():
     settings = Settings.from_env()
 
@@ -282,19 +340,20 @@ def main_cli():
     print("  3) Reddit Stories    (scrape/gen -> background -> edit -> upload)")
     print("  4) Analyze Only      (split chunks -> transcribe -> vision AI)")
     print("  5) Queue Status      (view pending review jobs)")
+    print("  6) Channel Growth    (search, subscribe, comment on same-niche channels)")
     print()
 
     while True:
-        choice = input("Select mode (1/2/3/4/5) or 'q' to quit: ").strip()
+        choice = input("Select mode (1/2/3/4/5/6) or 'q' to quit: ").strip()
 
         if choice == "q":
             print("Goodbye.")
             return
 
-        if choice in ("1", "2", "3", "4", "5"):
+        if choice in ("1", "2", "3", "4", "5", "6"):
             break
 
-        print("Invalid choice. Select 1, 2, 3, 4, 5, or 'q'.")
+        print("Invalid choice. Select 1, 2, 3, 4, 5, 6, or 'q'.")
 
     if choice == "1":
         mode = "generate"
@@ -347,6 +406,18 @@ def main_cli():
 
     elif choice == "5":
         menu_queue_status()
+
+    elif choice == "6":
+        mode = "reddit"
+        errors = validate_settings(settings, mode)
+        if errors:
+            print("\nConfiguration errors:")
+            for e in errors:
+                print(f"  - {e}")
+            print("\nFix in .env and restart.")
+            return
+        setup_logging(settings.log_dir)
+        menu_growth(settings)
 
 
 if __name__ == "__main__":
