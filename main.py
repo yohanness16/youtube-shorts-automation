@@ -6,7 +6,7 @@ import shutil
 import signal
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from config import Settings
@@ -111,6 +111,15 @@ def run_pipeline(settings: Settings) -> dict:
     # Step 5.5: Compute total video duration for background music
     total_duration = sum(seg_durations)
 
+    # Determine mood from script text for music selection
+    story_text = " ".join(seg.text for seg in script.segments)
+    from voice_selector import REDDIT_VOICES
+    subreddit = ""
+    for sub, _ in REDDIT_VOICES.items():
+        if sub.lower() in story_text.lower() or sub.lower() in idea.title.lower():
+            subreddit = sub
+            break
+
     # Step 6: Assemble final video
     if _shutdown:
         return state
@@ -118,9 +127,9 @@ def run_pipeline(settings: Settings) -> dict:
     logger.info("STEP 6: Assembling video")
     state["step"] = "assembling"
 
-    # Generate background music dynamically
+    # Generate background music dynamically based on story mood
     music_path = base / "audio" / "background.wav"
-    generate_background_music(music_path, duration=total_duration)
+    generate_background_music(music_path, duration=total_duration, subreddit=subreddit, story_text=story_text)
 
     final_video = assemble_video(
         clip_paths=clips,
@@ -198,12 +207,14 @@ def run_once(settings: Settings) -> dict:
     archive_run(settings, result)
 
     # Save persistent state
-    state_file = settings.cache_dir / "state.json"
     saved = read_state(settings.cache_dir)
     saved["last_run"] = result
     saved["total_runs"] = saved.get("total_runs", 0) + 1
     if result.get("success"):
         saved["total_successes"] = saved.get("total_successes", 0) + 1
+        today = datetime.now().strftime("%Y-%m-%d")
+        today_key = f"videos_{today}"
+        saved[today_key] = saved.get(today_key, 0) + 1
     save_state(settings.cache_dir, saved)
     return result
 
@@ -241,6 +252,27 @@ def main():
         total = state.get("total_runs", 0)
         successes = state.get("total_successes", 0)
         logger.info(f"Run #{total + 1} (completed: {successes}/{total})")
+
+        # Daily video limit check
+        if settings.max_videos_per_day > 0:
+            today = datetime.now().strftime("%Y-%m-%d")
+            today_count = state.get(f"videos_{today}", 0)
+            if today_count >= settings.max_videos_per_day:
+                logger.info(
+                    f"Daily limit reached ({today_count}/{settings.max_videos_per_day} for {today}), "
+                    f"sleeping until midnight..."
+                )
+                now = datetime.now()
+                midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                # midnight is already passed; compute next day's midnight
+                from datetime import timedelta
+                next_midnight = midnight + timedelta(days=1)
+                sleep_secs = int((next_midnight - now).total_seconds())
+                for _ in range(sleep_secs):
+                    if _shutdown:
+                        break
+                    time.sleep(1)
+                continue
 
         try:
             result = run_once(settings)
