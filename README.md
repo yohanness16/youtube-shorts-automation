@@ -1,142 +1,95 @@
-# YouTube Shorts Automation
+# YouTube Shorts Automation — Reddit Stories
 
-Fully autonomous Python pipeline that researches, scripts, generates, edits, and uploads YouTube Shorts — running 24/7 on its own.
+Fully autonomous Python pipeline that generates viral Reddit Stories Shorts with background gameplay, emotional voiceovers, dynamic subtitles, and background music.
 
-## What It Does
+## Channel Growth Plan: 0 → 1K Subs in 7 Days
 
-1. **Researches topics** in your niche using an LLM (Qwen, DeepSeek, OpenRouter, or any OpenAI-compatible API)
-2. **Generates a script** — coherent 12-segment narrative with voiceover text and visual prompts for each clip
-3. **Creates voiceover** via ElevenLabs or OpenAI TTS (per-segment, so subtitles are accurately timed)
-4. **Generates 12 AI video clips** via your chosen video API (Luma, Runway, Pika) — or uses mock mode for testing
-5. **Assembles everything** with ffmpeg: joins clips, overlays voiceover, adds styled subtitles, mixes background music
-6. **Uploads to YouTube** via the YouTube Data API v3
+### Strategy: Quality + Volume + Engagement
 
-Runs in an infinite loop — generate a video, sleep, repeat.
+**Week 1: Launch Phase**
 
-## Quick Start
+#### Daily Production Target
+- **3 Shorts/day** (morning 8am, afternoon 2pm, evening 8pm EST)
+- 21 Shorts total for the week
+- Each Short: 50-58 seconds, high-retention storytelling
+
+#### Content Mix
+| Day | Primary Subreddit | Secondary | Goal |
+|-----|-------------------|-----------|------|
+| 1-2 | AmItheAsshole | confessions | Hook with drama/identity |
+| 3-4 | pettyrevenge | MaliciousCompliance | Satisfying payoffs |
+| 5 | tifu | trueoffmychest | Relatable humor |
+| 6-7 | prorevenge | confessions | Strong finish |
+
+#### Growth Tactics Implemented
+1. **Sub-to-Sub Strategy** — Subscribe to 50 Reddit story channels daily in 15-minute bursts
+   - Channels with 100-5K subs (they sub back fastest)
+   - Like their 2 most recent videos
+   - Leave genuine comments (not "sub4sub")
+2. **Comment Engagement** — Auto-post engaging question on every Short
+   - Pin the comment to drive reply rate
+   - Reply to EVERY comment within 1 hour
+3. **Cross-Promotion** — Post Shorts to r/YouTube_STARTUP for feedback
+4. **Optimized Metadata** — Subreddit-specific tags + trending hashtags in description
+5. **Consistent Branding** — Same voice styles, subtitle format, music mood
+
+#### Realistic Projections
+| Metric | Target |
+|--------|--------|
+| Videos in Week 1 | 21 |
+| Avg Views/Video | 500-2,000 (new channel) |
+| Total Views | 10K-40K |
+| Sub Conversion | 2-5% |
+| Sub Goal | 1,000 |
+
+### How to Run
 
 ```bash
-# 1. Set up environment
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+# Generate and upload one Short
+python generate_short.py
 
-# 2. Add your API keys
-cp .env.example .env
-nano .env  # fill in your keys
-
-# 3. Verify ffmpeg is installed
-which ffmpeg  # required
-
-# 4. Run once (manual test)
-python main.py
+# Generate one Short (no upload — saves to file)
+python generate_short.py  # upload happens if credentials configured
 ```
 
-## Configuration
+## What Each Short Does
 
-Copy `.env.example` to `.env` and fill in the values:
+1. **Picks the best story** — scrapes 9 subreddits, picks highest upvoted
+2. **Builds script** — LLM adapts story into 12 timed segments
+3. **Generates voiceover** — Edge TTS with emotional subreddit-matched voice
+4. **Selects background video** — from your `bg_Video/` folder
+5. **Selects background music** — mood-matched from your `bgMusic/` folder (audible at 20% mix level)
+6. **Cuts clips** — 12 segments cut from background video
+7. **Generates subtitles** — 64px centered, animated pop-in effect
+8. **Assembles** — ffmpeg combines video + voice + music + subtitles
+9. **Uploads** — YouTube with subreddit-specific tags + SEO description
 
-```ini
-# === Script LLM (Qwen, DeepSeek, OpenRouter, etc.) ===
-SCRIPT_PROVIDER=qwen
-SCRIPT_API_KEY=your-key
-SCRIPT_MODEL=qwen-plus
-SCRIPT_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-
-# === Voiceover ===
-VOICE_PROVIDER=elevenlabs
-ELEVENLABS_API_KEY=your-key
-ELEVENLABS_VOICE_ID=EXAVITQu4vr4xnSDxMaL
-
-# === Video Generation ===
-VIDEO_PROVIDER=mock          # mock | luma | runway | pika
-VIDEO_API_KEY=your-key       # not needed for mock
-
-# === YouTube ===
-YOUTUBE_CLIENT_ID=...
-YOUTUBE_CLIENT_SECRET=...
-YOUTUBE_REFRESH_TOKEN=...
-YOUTUBE_PRIVACY_STATUS=private  # review before going public
-
-# === Settings ===
-NICHE=history-facts
-CLIPS_PER_VIDEO=12
-POLL_INTERVAL_SECONDS=600  # time between runs
-```
-
-## Architecture
-
-```
-┌──────────────┐     ┌─────────────────┐     ┌──────────────────┐
-│ Idea         │────>│ Script          │────>│ Audio (TTS)      │
-│ Generator    │     │ Generator       │     │ Generator        │
-└──────────────┘     └─────────────────┘     └──────┬───────────┘
-                                                     │
-┌──────────────┐     ┌─────────────────┐     ┌──────▼───────────┐
-│ YouTube      │<────│ Video Editor    │<────│ Video Clip       │
-│ Uploader     │     │ (ffmpeg)        │     │ Generator        │
-└──────────────┘     └─────────────────┘     └──────────────────┘
-                           │
-                     ┌─────▼────────┐
-                     │ Subtitles    │
-                     │ Generator    │
-                     └──────────────┘
-```
+## File Reference
 
 | File | Purpose |
 |------|---------|
-| `main.py` | Orchestrator — runs the full pipeline in a loop |
-| `config.py` | Settings, API key loading, validation |
-| `idea_generator.py` | Researches trending topics via LLM |
-| `script_generator.py` | Generates 12-segment script + visual prompts |
-| `audio_generator.py` | ElevenLabs or OpenAI TTS voiceover |
-| `video_generator.py` | AI video generation (Mock/Luma/Runway/Pika) |
-| `subtitles.py` | SRT → ASS generation from per-segment timing |
-| `editor.py` | ffmpeg assembly: clips + audio + subtitles + music |
-| `music_generator.py` | Synth background music via ffmpeg |
-| `youtube_uploader.py` | YouTube Data API v3 upload |
-| `utils.py` | Logging, retry decorator, ffmpeg helpers |
+| `generate_short.py` | Single Short generator + uploader |
+| `reddit_stories.py` | Reddit scraper + AI story generation |
+| `background_video.py` | Background video from local folder |
+| `subtitles.py` | SRT → ASS (centered, animated, 64px) |
+| `editor.py` | ffmpeg assembly (bg music at 20% volume) |
+| `youtube_uploader.py` | Upload with tags + engaging comment |
+| `config.py` | Settings from `.env` |
+
+## Configuration
+
+```ini
+REDDIT_NICHES=AmItheAsshole,confessions,trueoffmychest,tifu,MaliciousCompliance,pettyrevenge,prorevenge,LetsNotMeet,nosleep
+BACKGROUND_VIDEO_SOURCE=local
+BACKGROUND_VIDEO_FOLDER=./bg_Video
+YOUTUBE_PRIVACY_STATUS=public
+```
 
 ## Requirements
 
 - **Python 3.10+**
-- **ffmpeg** (system binary) — [install guide](https://ffmpeg.org/download.html)
-- API keys for your chosen providers
-
-## Running
-
-```bash
-# Continuous loop (Ctrl+C to stop gracefully)
-source .venv/bin/activate
-python main.py
-
-# YouTube OAuth setup (one time)
-python scripts/get_youtube_token.py
-```
-
-## Directory Structure
-
-```
-output/          # Current build workspace
-  clips/         # Generated clip files
-  audio/         # Voiceover segments + full mix
-  subs/          # Subtitle files
-  draft.mp4      # Assembled video
-cache/           # Cached ideas, pipeline state
-completed/       # Archived successful runs
-failed/          # Failed runs with error logs
-logs/            # Pipeline log files
-```
-
-## Adding a Real Video Provider
-
-The code ships with **MockProvider** (colored frames) for zero-cost testing. To use a real AI video API:
-
-1. Pick a provider and get an API key
-2. Update `.env`:
-   ```ini
-   VIDEO_PROVIDER=luma
-   VIDEO_API_KEY=your-key
-   VIDEO_BASE_URL=https://api.lumalabs.ai/dream-machine/v1
-   ```
-3. If the provider isn't the built-in `luma`, add a new class in `video_generator.py` implementing the `VideoProvider.generate_clip()` interface.
+- **ffmpeg** (system binary)
+- **yt-dlp** (for download fallback)
+- **Edge TTS** (free voiceover, no API key)
+- OpenRouter API key (for LLM scripts)
+- YouTube OAuth credentials (for upload)
