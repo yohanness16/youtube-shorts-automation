@@ -1,16 +1,31 @@
 """Audio generator — ElevenLabs or OpenAI TTS per-segment voiceover."""
 
 import logging
+import time
+import subprocess
 from pathlib import Path
 
 from config import Settings
 from script_generator import Script
-from utils import retry
+from utils import retry, run_ffmpeg
 
 logger = logging.getLogger("video_automation.audio")
 
 
-def generate_voiceover(settings: Settings, script: Script, output_dir: Path) -> Path:
+def _get_segment_duration(seg_path: Path, clip_duration_seconds: int) -> float:
+    """Get audio file duration via ffprobe."""
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "csv=p=0", str(seg_path)],
+        capture_output=True, text=True,
+    )
+    try:
+        return float(result.stdout.strip())
+    except (ValueError, TypeError):
+        return float(clip_duration_seconds)
+
+
+def generate_voiceover(settings: Settings, script: Script, output_dir: Path, voice: str = "") -> Path:
     """Generate per-segment voiceover audio, then concatenate into one file.
 
     Returns path to the full_voiceover.wav file.
@@ -20,12 +35,12 @@ def generate_voiceover(settings: Settings, script: Script, output_dir: Path) -> 
     seg_dir = output_dir / "audio"
     seg_dir.mkdir(parents=True, exist_ok=True)
 
-    # Generate each segment's audio
+    # Edge-TTS voice based on subreddit (default to GuyNeural if not specified)
+    edge_voice = voice or "en-US-GuyNeural"
+
     seg_durations: list[float] = []
     for i, seg in enumerate(segments):
         if not seg.text.strip():
-            # Generate silence for empty segments
-            from utils import run_ffmpeg
             silence_len = settings.clip_duration_seconds
             run_ffmpeg([
                 "-f", "lavfi", "-i", f"anullsrc=r=44100:cl=mono",
@@ -38,60 +53,54 @@ def generate_voiceover(settings: Settings, script: Script, output_dir: Path) -> 
 
         seg_path = seg_dir / f"seg_{i:03d}.wav"
 
-        if provider == "elevenlabs":
-            _generate_elevenlabs(settings, seg.text, seg_path)
-        elif provider == "openai":
-            _generate_openai_tts(settings, seg.text, seg_path)
-        else:
-            raise ValueError(f"Unknown voice provider: {provider}")
+        try:
+            if provider == "elevenlabs":
+                _generate_elevenlabs(settings, seg.text, seg_path)
+            elif provider == "openai":
+                _generate_openai_tts(settings, seg.text, seg_path)
+            elif provider == "edge":
+                _generate_edge_tts(seg.text, seg_path, edge_voice)
+            else:
+                raise ValueError(f"Unknown voice provider: {provider}")
 
-        # Get segment duration
-        from utils import run_ffmpeg
-        probe = run_ffmpeg([
-            "-i", str(seg_path),
-            "-f", "null", "-",
-        ])
-        # Parse duration from stderr - simpler: use ffprobe
-        import subprocess
-        result = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-             "-of", "csv=p=0", str(seg_path)],
-            capture_output=True, text=True,
-        )
-        dur = float(result.stdout.strip()) if result.returncode == 0 else settings.clip_duration_seconds
-        seg_durations.append(dur)
-        logger.info(f"Segment {i+1} audio: {len(seg.text)} words, {dur:.2f}s")
+            dur = _get_segment_duration(seg_path, settings.clip_duration_seconds)
+            seg_durations.append(dur)
+            logger.info(f"Segment {i+1} audio: {len(seg.text.split())} words, {dur:.2f}s")
 
-    # Concatenate all segments into one file
+            # Small delay between edge-tts calls to avoid rate limiting
+            if provider == "edge":
+                time.sleep(0.5)
+        except Exception as e:
+            logger.warning(f"Segment {i+1} TTS failed ({e}), using silence")
+            run_ffmpeg([
+                "-f", "lavfi", "-i", f"anullsrc=r=44100:cl=mono",
+                "-t", str(settings.clip_duration_seconds),
+                "-c:a", "pcm_s16le",
+                "-y", str(seg_path),
+            ])
+            seg_durations.append(float(settings.clip_duration_seconds))
+
+    # Concatenate all segments
     full_wav = seg_dir / "full_voiceover.wav"
-    from utils import run_ffmpeg
-    if all(d > 0 for d in seg_durations):
-        # Build concat filter
-        inputs = []
-        filters = []
+    list_file = seg_dir / "concat_list.txt"
+    with open(list_file, "w") as f:
         for i in range(len(segments)):
-            inputs += ["-i", str(seg_dir / f"seg_{i:03d}.wav")]
-        concat_args = "".join(f"[{i}:a]" for i in range(len(segments)))
-        filters.append(f"{concat_args}concat=n={len(segments)}:v=0:a=1[out]")
-        run_ffmpeg([*inputs, "-filter_complex", ";".join(filters), "-map", "[out]", "-y", str(full_wav)])
-    else:
-        # Fallback: use concat demuxer
-        list_file = seg_dir / "concat_list.txt"
-        with open(list_file, "w") as f:
-            for i in range(len(segments)):
-                f.write(f"file 'seg_{i:03d}.wav'\n")
-        run_ffmpeg([
-            "-f", "concat", "-safe", "0",
-            "-i", str(list_file),
-            "-c:a", "pcm_s16le",
-            "-y", str(full_wav),
-        ])
+            p = seg_dir / f"seg_{i:03d}.wav"
+            if p.exists() and p.stat().st_size > 0:
+                f.write(f"file '{p.absolute()}'\n")
+
+    run_ffmpeg([
+        "-f", "concat", "-safe", "0",
+        "-i", str(list_file),
+        "-c:a", "pcm_s16le",
+        "-y", str(full_wav),
+    ])
 
     logger.info(f"Full voiceover: {full_wav}")
     return full_wav
 
 
-@retry(max_retries=3, delay=5.0, exceptions=(Exception,))
+@retry(max_retries=2, delay=3.0, exceptions=(Exception,))
 def _generate_elevenlabs(settings: Settings, text: str, output_path: Path):
     """Generate audio using ElevenLabs API."""
     import httpx
@@ -116,9 +125,9 @@ def _generate_elevenlabs(settings: Settings, text: str, output_path: Path):
             f.write(resp.content)
 
 
-@retry(max_retries=3, delay=5.0, exceptions=(Exception,))
+@retry(max_retries=2, delay=3.0, exceptions=(Exception,))
 def _generate_openai_tts(settings: Settings, text: str, output_path: Path):
-    """Generate audio using OpenAI TTS API."""
+    """Generate audio using OpenAI-compatible TTS API."""
     from openai import OpenAI
 
     client = OpenAI(api_key=settings.voice.openai_api_key)
@@ -131,3 +140,13 @@ def _generate_openai_tts(settings: Settings, text: str, output_path: Path):
         response_format="wav",
     )
     response.stream_to_file(str(output_path))
+
+
+@retry(max_retries=2, delay=3.0, exceptions=(Exception,))
+def _generate_edge_tts(text: str, output_path: Path, voice: str = "en-US-GuyNeural"):
+    """Generate audio using Edge-TTS (free, no API key)."""
+    import edge_tts
+
+    logger.debug(f"Edge-TTS ({voice}): '{text[:50]}...'")
+    comm = edge_tts.Communicate(text, voice=voice)
+    comm.save_sync(str(output_path))
